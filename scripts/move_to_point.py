@@ -40,6 +40,7 @@ class SusanMoveit(object):
         super(SusanMoveit, self).__init__()
         moveit_commander.roscpp_initialize(sys.argv)
         rospy.init_node("susan_moveit", anonymous=True)
+        self.init_susan_variables()
 
         # Init Move Group
         self.group_name = "susan_arm_group"
@@ -55,16 +56,31 @@ class SusanMoveit(object):
         # Subscriber for current joint state
         self.joint_state_sub = rospy.Subscriber('/joint_states', sensor_msgs.msg.JointState, self.joint_state_callback)
 
-        self.init_susan_variables()
+        # Subscriber for pose command
+        self.joint_state_sub = rospy.Subscriber('/pose_command', geometry_msgs.msg.Pose, self.pose_command_callback)
 
     def joint_state_callback(self, msg):
         self.joint_state = msg
         if(self.init == False):
            self.init = True
 
+    def pose_command_callback(self, msg):
+        self.pose_command.position.x = msg.position.x
+        self.pose_command.position.y = msg.position.y
+        self.pose_command.position.z = msg.position.z
+
     def init_susan_variables(self):
         self.pose_state = geometry_msgs.msg.Pose()
+        # Goal State: Ready
         self.pose_command = geometry_msgs.msg.Pose()
+        self.pose_command.position.x = 0.23020871736041854
+        self.pose_command.position.y = -0.09804201997659427
+        self.pose_command.position.z = -0.2747095401812456
+        self.pose_command.orientation.x = 0.7070666262443575
+        self.pose_command.orientation.y = -0.7071468204090466
+        self.pose_command.orientation.z = -0.00024981334063552845
+        self.pose_command.orientation.w = 0.00031309757866667385
+
         self.joint_state = sensor_msgs.msg.JointState()
         self.base_link_name = "link1"
         self.end_effector_name = "hand"
@@ -140,16 +156,8 @@ class SusanMoveit(object):
 
     def main_loop(self, event):
         if(self.init == True):
-            self.print_pose_state()
-            pose = geometry_msgs.msg.Pose()
-            pose.position.x = 0.23020871736041854
-            pose.position.y = -0.09804201997659427
-            pose.position.z = -0.2747095401812456
-            pose.orientation.x = 0.7070666262443575
-            pose.orientation.y = -0.7071468204090466
-            pose.orientation.z = -0.00024981334063552845
-            pose.orientation.w = 0.00031309757866667385
-            ik_result = self.calculate_ik(pose)
+            # self.print_pose_state()
+            ik_result = self.calculate_ik(self.pose_command)
             joint_names = ik_result.solution.joint_state.name
             joint_commands = list(ik_result.solution.joint_state.position)
             rospy.loginfo("IK names: "+str(joint_names))
