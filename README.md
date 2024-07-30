@@ -71,7 +71,7 @@ cd susan_ws
 source devel/setup.bash
 roslaunch susan_control susan_control.launch hardware_type:=fake
 ```
-Then run [move_to_point.py](./scripts/move_to_point.py) to make the robotic arm following the trajectory generated. Note that you should firstly specity the path to the trajectory file in line 251 of [move_to_point.py](./scripts/move_to_point.py)：
+Then run [move_to_point.py](./scripts/move_to_point.py) to make the robotic arm following the trajectory generated. Note that you should firstly specify the path to the trajectory file in line 251 of [move_to_point.py](./scripts/move_to_point.py)：
 ```python
 # It indicates the path to the trajectory file.
 susan.follow_goal_trajectory("/home/hzx/trajectory.pickle")
