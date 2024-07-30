@@ -208,14 +208,6 @@ class SusanMoveit(object):
 
         self.go_to_joint_state_ros_control(joint_names, joint_commands)
 
-    def seng_goals(self):
-        ik_result = self.calculate_ik(self.pose_command)
-        joint_names = ik_result.solution.joint_state.name
-        joint_commands = list(ik_result.solution.joint_state.position)
-        # rospy.loginfo("IK names: "+str(joint_names))
-        # rospy.loginfo("IK results: "+str(joint_commands))
-        self.go_to_joint_state_ros_control(joint_names, joint_commands)
-
 
     def run(self):
         rospy.spin()
