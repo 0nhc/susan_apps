@@ -38,7 +38,7 @@ The second terminal launches the hardware interface. You can select hardware typ
 ```sh
 # Terminal 2
 
-# Setup your USB-CAN device first.
+# Setup your USB-CAN device firstly.
 sudo ip link set can0 type can bitrate 1000000
 sudo ifconfig can0 up
 
