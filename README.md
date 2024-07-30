@@ -1,12 +1,6 @@
 # susan_apps
-```python
-rostopic pub /pose_command geometry_msgs/Pose "position:
-  x: 0.010942078159337648
-  y: -0.1981252863392596
-  z: -0.3843128428347435
-orientation:
-  x: 0.7070961710565425
-  y: -0.7071172639116621
-  z: -0.0002720645481694116
-  w: 0.0003254783317511199" 
+* Remember to set up your CANable devices.
+```sh
+sudo ip link set can0 type can bitrate 1000000
+sudo ifconfig can0 up
 ```

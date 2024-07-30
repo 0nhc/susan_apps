@@ -3,14 +3,35 @@
 import rospy
 import moveit_commander
 from moveit_commander.conversions import pose_to_list
+import actionlib
 import moveit_msgs.msg
 import sensor_msgs.msg
 import geometry_msgs.msg
+import control_msgs.msg
+import trajectory_msgs.msg
 import math
 import sys
 import time
+import pickle
 
 NUM_JOINTS = 7
+
+class TrajPoint:
+    def __init__(self, px=0.0, py=0.0, pz=0.0, ox=0.0, oy=0.0, oz=0.0, ow=1.0) -> None:
+        self.px = px
+        self.py = py
+        self.pz = pz
+        self.ox = ox
+        self.oy = oy
+        self.oz = oz
+        self.ow = ow
+
+class Traj:
+    def __init__(self, num_points=1) -> None:
+        self.data = []
+        self.num_points = num_points
+        for i in range(self.num_points):
+            self.data.append(TrajPoint())
 
 def dist(p, q):
     return math.sqrt(sum((p_i - q_i) ** 2.0 for p_i, q_i in zip(p, q)))
@@ -42,6 +63,17 @@ class SusanMoveit(object):
         rospy.init_node("susan_moveit", anonymous=True)
         self.init_susan_variables()
 
+        # Action Client for Moving Joints
+        # self.joint_command_publisher = rospy.Publisher('/susan_arm_group_controller/command', trajectory_msgs.msg.JointTrajectory, queue_size=10)
+        self.ros_control_action_client = actionlib.SimpleActionClient('/susan_arm_group_controller/follow_joint_trajectory', control_msgs.msg.FollowJointTrajectoryAction)
+        self.ros_control_action_client.wait_for_server()
+        
+        self.ros_control_action_goal = control_msgs.msg.FollowJointTrajectoryActionGoal()
+        self.ros_control_action_goal = control_msgs.msg.FollowJointTrajectoryGoal()
+        # self.ros_control_action_goal.trajectory.header.stamp = rospy.Time.now()
+        self.ros_control_action_goal.trajectory.header.frame_id = "susan_arm_group_action_goal.frame_id"
+        self.ros_control_action_goal.goal_time_tolerance = rospy.rostime.Duration(1)
+
         # Init Move Group
         self.group_name = "susan_arm_group"
         self.move_group = moveit_commander.MoveGroupCommander(self.group_name)
@@ -56,8 +88,10 @@ class SusanMoveit(object):
         # Subscriber for current joint state
         self.joint_state_sub = rospy.Subscriber('/joint_states', sensor_msgs.msg.JointState, self.joint_state_callback)
 
-        # Subscriber for pose command
-        self.joint_state_sub = rospy.Subscriber('/pose_command', geometry_msgs.msg.Pose, self.pose_command_callback)
+
+
+
+        
 
     def joint_state_callback(self, msg):
         self.joint_state = msg
@@ -73,39 +107,13 @@ class SusanMoveit(object):
         self.pose_state = geometry_msgs.msg.Pose()
         # Goal State: Ready
         self.pose_command = geometry_msgs.msg.Pose()
-        self.pose_command.position.x = 0.23020871736041854
-        self.pose_command.position.y = -0.09804201997659427
-        self.pose_command.position.z = -0.2747095401812456
-        self.pose_command.orientation.x = 0.7070666262443575
-        self.pose_command.orientation.y = -0.7071468204090466
-        self.pose_command.orientation.z = -0.00024981334063552845
-        self.pose_command.orientation.w = 0.00031309757866667385
-
         self.joint_state = sensor_msgs.msg.JointState()
         self.base_link_name = "link1"
         self.end_effector_name = "hand"
         self.init = False
 
     def calculate_ik(self, target_pose):
-        # # Create an IK request message
-        # ik_request = moveit_msgs.srv.GetPositionIKRequest()
-        # ik_request.ik_request.group_name = self.group_name
-        # ik_request.ik_request.pose_stamped.header.frame_id = self.base_link_name
-        # ik_request.ik_request.pose_stamped.pose = target_pose
-
-        # # Call the IK service
-        # try:
-        #     ik_response = self.ik_service(ik_request)
-        #     if ik_response.error_code.val == ik_response.error_code.SUCCESS:
-        #         rospy.logwarn(f"IK service succeeded with results: {ik_response.solution.joint_state.position}")
-        #         return ik_response.solution.joint_state.position
-        #     else:
-        #         rospy.logwarn(f"IK service failed with error code: {ik_response.error_code}")
-        #         return None
-        # except rospy.ServiceException as e:
-        #     rospy.logerr("Service call failed: %s", e)
-        #     return None
-
+        # Solve Inverse Kinematics
         service_request = moveit_msgs.msg.PositionIKRequest()
         service_request.group_name = self.group_name
         service_request.robot_state = moveit_msgs.msg.RobotState()
@@ -115,13 +123,18 @@ class SusanMoveit(object):
         service_request.pose_stamped.header.frame_id = self.base_link_name
         service_request.pose_stamped.header.stamp = rospy.Time.now()
         service_request.pose_stamped.pose = target_pose
-        service_request.constraints.joint_constraints.append(moveit_msgs.msg.JointConstraint)
-        service_request.constraints.joint_constraints[0].joint_name = "right_arm_joint3"
-        # the bound to be achieved is [position - tolerance_below, position + tolerance_above]
-        service_request.constraints.joint_constraints[0].position = 0.0
-        service_request.constraints.joint_constraints[0].tolerance_above = 0.001
-        service_request.constraints.joint_constraints[0].tolerance_below = 0.001
-        service_request.constraints.joint_constraints[0].weight = 0.2
+        # service_request.constraints.joint_constraints.append(moveit_msgs.msg.JointConstraint)
+        # service_request.constraints.joint_constraints[0].joint_name = "right_arm_joint4"
+        # service_request.constraints.joint_constraints[0].position = 0.0 # the bound to be achieved is [position - tolerance_below, position + tolerance_above]
+        # service_request.constraints.joint_constraints[0].tolerance_above = 2.50
+        # service_request.constraints.joint_constraints[0].tolerance_below = 0.01
+        # service_request.constraints.joint_constraints[0].weight = 0.5
+        # service_request.constraints.joint_constraints.append(moveit_msgs.msg.JointConstraint)
+        # service_request.constraints.joint_constraints[1].joint_name = "right_arm_joint3"
+        # service_request.constraints.joint_constraints[1].position = 0.0 # the bound to be achieved is [position - tolerance_below, position + tolerance_above]
+        # service_request.constraints.joint_constraints[1].tolerance_above = 1.00
+        # service_request.constraints.joint_constraints[1].tolerance_below = 0.05
+        # service_request.constraints.joint_constraints[1].weight = 0.3
         service_request.timeout = rospy.Duration(3.0)
         service_request.avoid_collisions = True
 
@@ -141,12 +154,12 @@ class SusanMoveit(object):
         self.pose_state = self.move_group.get_current_pose(self.end_effector_name).pose
         rospy.loginfo(str(self.pose_state))
 
-    def go_to_joint_state(self, goals):
-        if type(goals) is list:
+    def go_to_joint_state(self, joint_names,  joint_goals):
+        if type(joint_goals) is list:
             move_group = self.move_group
             joint_goal = move_group.get_current_joint_values()
             for i in range(NUM_JOINTS):
-                joint_goal[i] = goals[i]
+                joint_goal[i] = joint_goals[i]
             move_group.go(joint_goal, wait=True)
             move_group.stop()
             current_joints = move_group.get_current_joint_values()
@@ -154,15 +167,55 @@ class SusanMoveit(object):
         else:
             rospy.logwarn("Invalid Input for Function go_To_joint_state. Type must be List.")
 
+    def go_to_joint_state_ros_control(self, joint_names,  joint_goals):
+        if type(joint_goals) is list:
+            self.ros_control_action_goal.trajectory.header.stamp = rospy.Time.now()
+            self.ros_control_action_goal.trajectory.joint_names = joint_names
+            self.ros_control_action_goal.trajectory.points[0].positions = joint_goals
+            self.ros_control_action_client.send_goal(self.ros_control_action_goal)
+            self.ros_control_action_client.wait_for_result()
+            rospy.loginfo(str(self.ros_control_action_client.get_result()))
+            return self.ros_control_action_client.get_result()
+
     def main_loop(self, event):
         if(self.init == True):
-            # self.print_pose_state()
+            pass
+
+    def follow_goal_trajectory(self, path):
+        while(self.init == False):
+            pass
+        with open(path, 'rb') as f:
+            self.goal_trajectory = pickle.load(f)
+        for idx in range(self.goal_trajectory["num_points"]):
+            pose_point = self.goal_trajectory["data"][idx]
+            rospy.loginfo("px: "+str(pose_point.px)+", py: "+str(pose_point.py)+", pz: "+str(pose_point.pz)+
+                        ", ox: "+str(pose_point.ox)+", oy: "+str(pose_point.oy)+", oz: "+str(pose_point.oz)+", ow: "+str(pose_point.ow))
+            self.pose_command.position.x = pose_point.px
+            self.pose_command.position.y = pose_point.py
+            self.pose_command.position.z = pose_point.pz
+            self.pose_command.orientation.x = pose_point.ox
+            self.pose_command.orientation.y = pose_point.oy
+            self.pose_command.orientation.z = pose_point.oz
+            self.pose_command.orientation.w = pose_point.ow
             ik_result = self.calculate_ik(self.pose_command)
             joint_names = ik_result.solution.joint_state.name
             joint_commands = list(ik_result.solution.joint_state.position)
-            rospy.loginfo("IK names: "+str(joint_names))
-            rospy.loginfo("IK results: "+str(joint_commands))
-            self.go_to_joint_state(joint_commands)
+
+            point = trajectory_msgs.msg.JointTrajectoryPoint()
+            point.time_from_start = rospy.rostime.Duration(idx*0.3)
+            point.positions = joint_commands
+            self.ros_control_action_goal.trajectory.points.append(point)
+
+        self.go_to_joint_state_ros_control(joint_names, joint_commands)
+
+    def seng_goals(self):
+        ik_result = self.calculate_ik(self.pose_command)
+        joint_names = ik_result.solution.joint_state.name
+        joint_commands = list(ik_result.solution.joint_state.position)
+        # rospy.loginfo("IK names: "+str(joint_names))
+        # rospy.loginfo("IK results: "+str(joint_commands))
+        self.go_to_joint_state_ros_control(joint_names, joint_commands)
+
 
     def run(self):
         rospy.spin()
@@ -170,7 +223,8 @@ class SusanMoveit(object):
 def main():
     try:
         susan = SusanMoveit()
-        susan.run()
+        # susan.print_pose_state()
+        susan.follow_goal_trajectory("/home/hzx/trajectory.pickle")
 
     except rospy.ROSInterruptException:
         return
