@@ -69,8 +69,8 @@ class TrajectoryGenerator:
             pickle.dump(trajectory, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 tg = TrajectoryGenerator(50)
-tg.generate_circle(radius=0.075,
-                   init_px=0.17133348935796633, init_py = -0.2812875632299275, init_pz=-0.2747095401812456,
+tg.generate_circle(radius=0.1,
+                   init_px=0.15133348935796633, init_py = -0.2812875632299275, init_pz=-0.2747095401812456,
                    init_ox=0.7070666262443575, init_oy=-0.7071468204090466, init_oz=-0.00024981334063552845, init_ow=0.00031309757866667385)
 # tg.visualize_2d_trajectory()
 tg.save_traj("/home/hzx")

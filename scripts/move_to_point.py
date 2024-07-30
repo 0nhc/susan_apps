@@ -13,6 +13,7 @@ import math
 import sys
 import time
 import pickle
+import numpy as np
 
 NUM_JOINTS = 7
 
@@ -88,13 +89,12 @@ class SusanMoveit(object):
         # Subscriber for current joint state
         self.joint_state_sub = rospy.Subscriber('/joint_states', sensor_msgs.msg.JointState, self.joint_state_callback)
 
-
-
-
+        # Set IK Solver retry times
+        self.ik_calc_times = 5
         
 
     def joint_state_callback(self, msg):
-        self.joint_state = msg
+        self.joint_states = msg
         if(self.init == False):
            self.init = True
 
@@ -107,17 +107,18 @@ class SusanMoveit(object):
         self.pose_state = geometry_msgs.msg.Pose()
         # Goal State: Ready
         self.pose_command = geometry_msgs.msg.Pose()
-        self.joint_state = sensor_msgs.msg.JointState()
+        self.joint_states = sensor_msgs.msg.JointState()
         self.base_link_name = "link1"
         self.end_effector_name = "hand"
         self.init = False
 
-    def calculate_ik(self, target_pose):
+    def calculate_ik(self, joint_states, target_pose):
         # Solve Inverse Kinematics
         service_request = moveit_msgs.msg.PositionIKRequest()
         service_request.group_name = self.group_name
         service_request.robot_state = moveit_msgs.msg.RobotState()
-        service_request.robot_state.joint_state = self.joint_state
+        service_request.robot_state.joint_state = self.joint_states
+        service_request.robot_state.joint_state.position = joint_states
         # service_request.ik_link_name = self.end_effector_name
         service_request.pose_stamped = geometry_msgs.msg.PoseStamped()
         service_request.pose_stamped.header.frame_id = self.base_link_name
@@ -181,15 +182,41 @@ class SusanMoveit(object):
         if(self.init == True):
             pass
 
+    def calc_list_error(self, list_1, list_2):
+        length_1 = len(list_1)
+        length_2 = len(list_2)
+        if(length_1 != length_2):
+            rospy.logerr("function calc_list_error() received two lists with different length")
+            return None
+        else:
+            error = 0
+            for idx in range(length_1):
+                error += abs(list_1[idx] - list_2[idx])
+            return error
+                
+    def calc_best_ik_result(self, ik_results):
+        # sort by the position error between the result and current state
+        best_result = ik_results[0]
+        best_score = -np.inf
+        for ik_result in ik_results:
+            joint_commands = list(ik_result.solution.joint_state.position)
+            joint_states = self.joint_states.position
+            score = self.calc_list_error(joint_commands, joint_states)
+            if(score > best_score):
+                best_result = ik_result
+        return best_result
+
     def follow_goal_trajectory(self, path):
         while(self.init == False):
             pass
         with open(path, 'rb') as f:
             self.goal_trajectory = pickle.load(f)
+
+        joint_state_position_cache = self.joint_states.position
         for idx in range(self.goal_trajectory["num_points"]):
             pose_point = self.goal_trajectory["data"][idx]
-            rospy.loginfo("px: "+str(pose_point.px)+", py: "+str(pose_point.py)+", pz: "+str(pose_point.pz)+
-                        ", ox: "+str(pose_point.ox)+", oy: "+str(pose_point.oy)+", oz: "+str(pose_point.oz)+", ow: "+str(pose_point.ow))
+            # rospy.loginfo("px: "+str(pose_point.px)+", py: "+str(pose_point.py)+", pz: "+str(pose_point.pz)+
+                        # ", ox: "+str(pose_point.ox)+", oy: "+str(pose_point.oy)+", oz: "+str(pose_point.oz)+", ow: "+str(pose_point.ow))
             self.pose_command.position.x = pose_point.px
             self.pose_command.position.y = pose_point.py
             self.pose_command.position.z = pose_point.pz
@@ -197,10 +224,15 @@ class SusanMoveit(object):
             self.pose_command.orientation.y = pose_point.oy
             self.pose_command.orientation.z = pose_point.oz
             self.pose_command.orientation.w = pose_point.ow
-            ik_result = self.calculate_ik(self.pose_command)
-            joint_names = ik_result.solution.joint_state.name
-            joint_commands = list(ik_result.solution.joint_state.position)
 
+            ik_results = []
+            for i in range(self.ik_calc_times):
+                ik_result = self.calculate_ik(joint_state_position_cache, self.pose_command)
+                ik_results.append(ik_result)
+            best_ik_result = self.calc_best_ik_result(ik_results)
+            joint_names = best_ik_result.solution.joint_state.name
+            joint_commands = list(best_ik_result.solution.joint_state.position)
+            joint_state_position_cache = joint_commands
             point = trajectory_msgs.msg.JointTrajectoryPoint()
             point.time_from_start = rospy.rostime.Duration(idx*0.3)
             point.positions = joint_commands
