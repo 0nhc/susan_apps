@@ -16,4 +16,6 @@
   <depend>sensor_msgs</depend>
   <depend>trajectory_msgs</depend>
   <depend>actionlib</depend>
+  <depend>moveit_commander</depend>
+  <depend>moveit_ros_control_interface</depend>
 </package>
